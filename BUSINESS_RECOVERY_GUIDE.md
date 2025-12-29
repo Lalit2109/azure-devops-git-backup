@@ -11,10 +11,11 @@ This document provides a comprehensive guide for recovering Azure DevOps reposit
 1. [Introduction](#introduction)
 2. [Backup Process Overview](#backup-process-overview)
 3. [Recovery Scenarios](#recovery-scenarios)
-4. [Step-by-Step Recovery Procedures](#step-by-step-recovery-procedures)
-5. [Recovery Checklist](#recovery-checklist)
-6. [Post-Recovery Verification](#post-recovery-verification)
-7. [Contact Information](#contact-information)
+4. [Common Recovery Steps](#common-recovery-steps)
+5. [Step-by-Step Recovery Procedures](#step-by-step-recovery-procedures)
+6. [Recovery Checklist](#recovery-checklist)
+7. [Post-Recovery Verification](#post-recovery-verification)
+8. [Contact Information](#contact-information)
 
 ---
 
@@ -38,9 +39,9 @@ Our Azure DevOps Repository Backup and Recovery system automatically creates dai
 - Compliance and audit requirements
 
 **Recovery Capabilities:**
-- Restore entire organization structure
-- Restore individual projects
-- Restore specific repositories
+- Restore individual repositories (most common)
+- Restore entire projects
+- Restore complete organization structure
 - Restore to different organizations (for disaster recovery)
 
 ---
@@ -77,19 +78,19 @@ Our Azure DevOps Repository Backup and Recovery system automatically creates dai
 
 ## Recovery Scenarios
 
-### Scenario 1: Complete Organization Recovery
+### Scenario 1: Individual Repository Recovery ⭐ (Tested)
 
 **When to Use:**
-- Entire Azure DevOps organization was deleted
-- Migration to a new organization
-- Disaster recovery situation
+- Single repository was deleted
+- Repository needs to be restored to different location
+- Point-in-time recovery for specific repository
 
 **What Gets Restored:**
-- All projects
-- All repositories within each project
-- Complete repository structure
+- Selected repository only
+- Can restore to different organization/project
+- Can restore specific backup date
 
-**Time Estimate:** [e.g., 2-4 hours depending on number of repositories]
+**Time Estimate:** 5-15 minutes per repository
 
 ---
 
@@ -105,23 +106,52 @@ Our Azure DevOps Repository Backup and Recovery system automatically creates dai
 - Can restore to a new project name
 - Repository names remain the same
 
-**Time Estimate:** [e.g., 30-60 minutes per project]
+**Time Estimate:** 30-60 minutes per project
+
+**Note:** Uses same steps as Scenario 1, but restores all repositories in a project automatically.
 
 ---
 
-### Scenario 3: Individual Repository Recovery
+### Scenario 3: Complete Organization Recovery
 
 **When to Use:**
-- Single repository was deleted
-- Repository needs to be restored to different location
-- Point-in-time recovery for specific repository
+- Entire Azure DevOps organization was deleted
+- Migration to a new organization
+- Disaster recovery situation
 
 **What Gets Restored:**
-- Selected repository only
-- Can restore to different organization/project
-- Can restore specific backup date
+- All projects
+- All repositories within each project
+- Complete repository structure
 
-**Time Estimate:** [e.g., 5-15 minutes per repository]
+**Time Estimate:** 2-4 hours depending on number of repositories
+
+**Note:** Uses same steps as Scenario 1, but restores all projects and repositories automatically.
+
+---
+
+## Common Recovery Steps
+
+The following steps are common to all recovery scenarios and are detailed in Scenario 1 below:
+
+1. **Prepare Recovery Environment** (Steps 1-4)
+   - Open PowerShell
+   - Verify Azure connection
+   - Launch restore script
+   - Configure storage connection
+   - Review available backups
+
+2. **Configure Target Organization** (Step 9)
+   - Enter target Azure DevOps organization URL
+   - Choose authentication method
+
+3. **Monitor and Complete Recovery** (Steps 10-13)
+   - Confirm and execute
+   - Monitor recovery progress
+   - Handle existing resources
+   - Verify recovery summary
+
+**Scenarios 2 and 3 will reference these common steps and only detail their unique selection steps.**
 
 ---
 
@@ -145,7 +175,9 @@ Before starting any recovery procedure, ensure you have:
 
 ---
 
-### Recovery Procedure: Scenario 1 - Complete Organization Recovery
+### Recovery Procedure: Scenario 1 - Individual Repository Recovery ⭐
+
+*This is the most common scenario and has been fully tested. Scenarios 2 and 3 follow similar steps but with different selection processes.*
 
 #### Step 1: Prepare Recovery Environment
 
@@ -157,7 +189,7 @@ Before starting any recovery procedure, ensure you have:
    Get-AzContext
    ```
 
-**[SCREENSHOT PLACEHOLDER: Azure login and context verification]**
+![Azure login and context verification](screenshots/azure-login-verification.png)
 
 #### Step 2: Launch Restore Script
 
@@ -166,7 +198,7 @@ Before starting any recovery procedure, ensure you have:
    .\restoreRepos.ps1
    ```
 
-**[SCREENSHOT PLACEHOLDER: Script startup screen]**
+![Script startup screen](screenshots/script-startup.png)
 
 #### Step 3: Configure Storage Connection
 
@@ -174,13 +206,13 @@ Before starting any recovery procedure, ensure you have:
 2. Enter Storage Account name: `[Your Storage Account]`
 3. Enter Container name (default: `repobackups`)
 
-**[SCREENSHOT PLACEHOLDER: Storage configuration prompts]**
+![Storage configuration prompts](screenshots/storage-configuration.png)
 
 #### Step 4: Review Available Backups
 
 The script will display a table of all available backups organized by project and repository.
 
-**[SCREENSHOT PLACEHOLDER: Backup listing table]**
+![Backup listing table](screenshots/backup-listing-table.png)
 
 Review the list to confirm:
 - All expected projects are listed
@@ -189,44 +221,77 @@ Review the list to confirm:
 
 #### Step 5: Select Recovery Scenario
 
-1. When prompted, select option **1** (Full Organization Restore)
-2. Review the summary of repositories to be restored
+1. When prompted, select option **3** (Repository Restore)
+2. The script will display the scenario selection menu
 
-**[SCREENSHOT PLACEHOLDER: Scenario selection and summary]**
+![Scenario selection menu](screenshots/scenario-selection.png)
 
-#### Step 6: Configure Target Organization
+#### Step 6: Select Repository
 
-1. Enter target Azure DevOps organization URL:
+1. Review the backup table displayed earlier
+2. Note the repository key (format: X.Y, e.g., 1.3)
+3. Enter the repository key when prompted (e.g., `1.3`)
+
+![Repository key selection](screenshots/repository-key-selection.png)
+
+#### Step 7: Select Backup Date
+
+1. Review available backup dates for the repository
+2. Select backup date:
+   - Option 1: Latest backup (recommended)
+   - Other options: Specific historical date
+3. Enter the number corresponding to your choice
+
+![Backup date selection](screenshots/backup-date-selection.png)
+
+#### Step 8: Configure Target Location
+
+1. Enter target project name (can be different from source):
+   ```
+   [Enter target project name or press Enter for default]
+   ```
+2. Enter target repository name (can be different from source):
+   ```
+   [Enter target repository name or press Enter for default]
+   ```
+3. Enter target organization URL (can be different from source):
    ```
    https://dev.azure.com/YourOrganization
    ```
-2. Choose authentication method:
+
+![Target configuration](screenshots/target-configuration.png)
+
+#### Step 9: Configure Authentication
+
+1. Choose authentication method:
    - Option Y: Use SYSTEM_ACCESSTOKEN environment variable
    - Option N: Enter Personal Access Token manually
+2. If entering manually, provide your PAT token
 
-**[SCREENSHOT PLACEHOLDER: Organization configuration]**
+![Organization configuration](screenshots/organization-configuration.png)
 
-#### Step 7: Confirm and Execute
+#### Step 10: Confirm and Execute
 
 1. Review the restore summary:
-   - Number of repositories to restore
-   - Target organization
-   - Backup dates to be used
+   - Repository to be restored
+   - Source and target locations
+   - Backup date to be used
 2. Type **Y** to confirm and proceed
 
-**[SCREENSHOT PLACEHOLDER: Confirmation prompt]**
+![Confirmation prompt](screenshots/confirmation-prompt.png)
 
-#### Step 8: Monitor Recovery Progress
+#### Step 11: Monitor Recovery Progress
 
 The script will:
-- Create projects as needed (with confirmation prompts)
-- Create repositories as needed
-- Download and restore each repository
+- Create project if needed (with confirmation prompt)
+- Create repository if needed
+- Download backup from Azure Storage
+- Extract and restore repository
 - Display progress for each operation
 
-**[SCREENSHOT PLACEHOLDER: Recovery progress output]**
+![Recovery progress output](screenshots/recovery-progress.png)
 
-#### Step 9: Handle Existing Resources
+#### Step 12: Handle Existing Resources
 
 If projects or repositories already exist:
 - **Projects**: Script will prompt to create (Y/N)
@@ -235,87 +300,109 @@ If projects or repositories already exist:
   - **(O)verwrite**: Replace existing repository (destructive)
   - **(A)bort**: Cancel entire restore operation
 
-**[SCREENSHOT PLACEHOLDER: Conflict resolution prompts]**
+![Conflict resolution prompts](screenshots/conflict-resolution.png)
 
-#### Step 10: Verify Recovery Summary
+#### Step 13: Verify Recovery Summary
 
 At completion, review the summary:
 - Total repositories processed
 - Successful restores
 - Failed restores (if any)
 
-**[SCREENSHOT PLACEHOLDER: Recovery summary]**
+![Recovery summary](screenshots/recovery-summary.png)
 
 ---
 
 ### Recovery Procedure: Scenario 2 - Project Recovery
 
-#### Step 1-3: Same as Scenario 1
+*This scenario follows the same steps as Scenario 1, but with different selection process. Steps 1-4 and 9-13 are identical to Scenario 1.*
 
-Follow Steps 1-3 from Complete Organization Recovery.
+#### Steps 1-4: Common Steps
 
-#### Step 4: Select Project to Restore
+Follow **Steps 1-4** from Scenario 1 (Individual Repository Recovery):
+- Prepare Recovery Environment
+- Launch Restore Script
+- Configure Storage Connection
+- Review Available Backups
 
-1. Review the list of available projects
-2. Note the project index number
-3. When prompted, select option **2** (Project Restore)
-4. Enter the project number to restore
+#### Step 5: Select Recovery Scenario
 
-**[SCREENSHOT PLACEHOLDER: Project selection]**
+1. When prompted, select option **2** (Project Restore)
 
-#### Step 5: Specify Target Project Name
+**[SCREENSHOT PLACEHOLDER: Project scenario selection]**
+
+#### Step 6: Select Project to Restore
+
+1. Review the list of available projects displayed in the backup table
+2. Note the project index number (e.g., 1, 2, 3)
+3. Enter the project number to restore
+
+**[SCREENSHOT PLACEHOLDER: Project selection prompt]**
+
+#### Step 7: Specify Target Project Name
 
 1. Enter target project name:
-   - Can be same as source project name
+   - Can be same as source project name (press Enter)
    - Can be a new project name
    - Example: If source is "LegacyProject", target can be "NewProject"
 
 **[SCREENSHOT PLACEHOLDER: Target project name prompt]**
 
-#### Step 6-10: Complete Recovery
+#### Steps 8-13: Common Steps
 
-Follow Steps 6-10 from Complete Organization Recovery, but note:
-- Only repositories from the selected project will be restored
-- All repositories will be restored to the specified target project
+Follow **Steps 9-13** from Scenario 1:
+- Configure Authentication
+- Confirm and Execute
+- Monitor Recovery Progress
+- Handle Existing Resources
+- Verify Recovery Summary
+
+**Note:** The script will automatically restore all repositories within the selected project to the specified target project.
 
 ---
 
-### Recovery Procedure: Scenario 3 - Individual Repository Recovery
+### Recovery Procedure: Scenario 3 - Complete Organization Recovery
 
-#### Step 1-3: Same as Scenario 1
+*This scenario follows the same steps as Scenario 1, but restores all projects automatically. Steps 1-4 and 9-13 are identical to Scenario 1.*
 
-Follow Steps 1-3 from Complete Organization Recovery.
+#### Steps 1-4: Common Steps
 
-#### Step 4: Select Repository
+Follow **Steps 1-4** from Scenario 1 (Individual Repository Recovery):
+- Prepare Recovery Environment
+- Launch Restore Script
+- Configure Storage Connection
+- Review Available Backups
 
-1. Review the backup table
-2. Note the repository key (format: X.Y, e.g., 1.3)
-3. When prompted, select option **3** (Repository Restore)
-4. Enter the repository key (e.g., `1.3`)
+#### Step 5: Select Recovery Scenario
 
-**[SCREENSHOT PLACEHOLDER: Repository key selection]**
+1. When prompted, select option **1** (Full Organization Restore)
 
-#### Step 5: Select Backup Date
+**[SCREENSHOT PLACEHOLDER: Full organization scenario selection]**
 
-1. Review available backup dates for the repository
-2. Select backup date:
-   - Option 1: Latest backup (recommended)
-   - Other options: Specific historical date
-3. Enter the number corresponding to your choice
+#### Step 6: Review Restore Summary
 
-**[SCREENSHOT PLACEHOLDER: Backup date selection]**
+1. The script will display a summary showing:
+   - Total number of projects to restore
+   - Total number of repositories to restore
+   - Target organization
+2. Review the summary carefully
 
-#### Step 6: Configure Target Location
+**[SCREENSHOT PLACEHOLDER: Full organization restore summary]**
 
-1. Enter target project name (can be different from source)
-2. Enter target repository name (can be different from source)
-3. Enter target organization URL (can be different from source)
+#### Steps 7-13: Common Steps
 
-**[SCREENSHOT PLACEHOLDER: Target configuration]**
+Follow **Steps 9-13** from Scenario 1:
+- Configure Target Organization and Authentication
+- Confirm and Execute
+- Monitor Recovery Progress
+- Handle Existing Resources
+- Verify Recovery Summary
 
-#### Step 7-10: Complete Recovery
-
-Follow Steps 7-10 from Complete Organization Recovery.
+**Note:** The script will automatically:
+- Restore all projects found in backups
+- Restore all repositories within each project
+- Create projects and repositories as needed
+- Use the latest backup for each repository
 
 ---
 
@@ -361,7 +448,7 @@ Use this checklist for any recovery operation:
    - Navigate to each restored project
    - Count repositories and compare with expected count
 
-**[SCREENSHOT PLACEHOLDER: Repository list in Azure DevOps]**
+![Repository list in Azure DevOps](screenshots/repository-list-azure-devops.png)
 
 2. **Repository Content Verification**
    - Clone a sample repository
@@ -378,7 +465,7 @@ Use this checklist for any recovery operation:
      git log --oneline
      ```
 
-**[SCREENSHOT PLACEHOLDER: Git branch/tag verification]**
+![Git branch/tag verification](screenshots/git-branch-tag-verification.png)
 
 3. **Team Access Verification**
    - Verify team members can access repositories
@@ -422,9 +509,9 @@ Use this checklist for any recovery operation:
 
 ### ⏱️ Time Estimates
 
-- **Full Organization**: 2-4 hours (depends on repository count)
+- **Single Repository**: 5-15 minutes ✅ (Tested)
 - **Single Project**: 30-60 minutes
-- **Single Repository**: 5-15 minutes
+- **Full Organization**: 2-4 hours (depends on repository count)
 
 *Note: Times may vary based on repository sizes and network conditions.*
 
@@ -490,4 +577,3 @@ If you encounter issues during recovery:
 ---
 
 *This document should be reviewed and updated quarterly or after any significant changes to the backup/recovery system.*
-
