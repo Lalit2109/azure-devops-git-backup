@@ -1,0 +1,38 @@
+# Log files
+*.log
+backup-*.log
+restore-*.log
+
+# Temporary files
+*.tmp
+*.temp
+*.zip
+*.git/
+
+# PowerShell
+*.ps1.bak
+*.ps1.orig
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Sensitive information
+*.pat
+*.token
+secrets.txt
+.env
+
+# Backup files
+*.bak
+*.backup
+PUBLISHING_CHECKLIST.md
+
