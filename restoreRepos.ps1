@@ -432,7 +432,14 @@ function Create-ProjectIfNeeded {
     
     try {
         # Check if project exists
-        $existingProject = Get-VSTeamProject -Name $ProjectName -ErrorAction SilentlyContinue
+        $existingProject = $null
+        try {
+            $existingProject = Get-VSTeamProject -Name $ProjectName -ErrorAction Stop
+        } catch {
+            # Project doesn't exist or error occurred - this is expected for new projects
+            $existingProject = $null
+        }
+        
         if ($existingProject) {
             Write-Log "Project '$ProjectName' already exists" "INFO"
             return $true
