@@ -436,15 +436,37 @@ function Get-OriginalNamesFromManifest {
                     $sanitizedRepo = $pathParts[1]
                     $mappingKey = "$sanitizedProject|$sanitizedRepo"
                     
-                    # Store repository mapping
-                    $repoNameMapping[$mappingKey] = @{
-                        OriginalProject = $repo.Project
-                        OriginalRepository = $repo.Repository
+                    # Decode URL-encoded names from manifest (e.g., My%20Repo -> My Repo, My%25%25Repo -> My%%Repo)
+                    $decodedProject = $repo.Project
+                    $decodedRepository = $repo.Repository
+                    
+                    try {
+                        if (-not [string]::IsNullOrWhiteSpace($repo.Project)) {
+                            $decodedProject = [System.Uri]::UnescapeDataString($repo.Project)
+                        }
+                    } catch {
+                        # If decoding fails, use original value
+                        Write-Log "Could not decode project name '$($repo.Project)', using as-is" "WARNING"
                     }
                     
-                    # Store project mapping (sanitized -> original)
+                    try {
+                        if (-not [string]::IsNullOrWhiteSpace($repo.Repository)) {
+                            $decodedRepository = [System.Uri]::UnescapeDataString($repo.Repository)
+                        }
+                    } catch {
+                        # If decoding fails, use original value
+                        Write-Log "Could not decode repository name '$($repo.Repository)', using as-is" "WARNING"
+                    }
+                    
+                    # Store repository mapping with decoded names
+                    $repoNameMapping[$mappingKey] = @{
+                        OriginalProject = $decodedProject
+                        OriginalRepository = $decodedRepository
+                    }
+                    
+                    # Store project mapping (sanitized -> original decoded)
                     if (-not $projectNameMapping.ContainsKey($sanitizedProject)) {
-                        $projectNameMapping[$sanitizedProject] = $repo.Project
+                        $projectNameMapping[$sanitizedProject] = $decodedProject
                     }
                 }
             }
