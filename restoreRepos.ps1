@@ -245,7 +245,9 @@ function Select-RestoreScenario {
 
 function Display-AvailableBackups {
     param(
-        [hashtable]$BackupStructure
+        [hashtable]$BackupStructure,
+        [hashtable]$ProjectNameMapping = @{},
+        [hashtable]$RepoNameMapping = @{}
     )
     
     Write-Log "========================================" "INFO"
@@ -257,6 +259,9 @@ function Display-AvailableBackups {
     $tableData = @()
     
     foreach ($project in ($BackupStructure.Keys | Sort-Object)) {
+        # Use original project name if available
+        $displayProjectName = if ($ProjectNameMapping.ContainsKey($project)) { $ProjectNameMapping[$project] } else { $project }
+        
         $repoIndex = 1
         foreach ($repo in ($BackupStructure[$project].Keys | Sort-Object)) {
             $backups = @($BackupStructure[$project][$repo])
@@ -277,16 +282,26 @@ function Display-AvailableBackups {
                 $latestSize = 0
             }
             
+            # Get original repository name if available
+            $mappingKey = "$project|$repo"
+            $displayRepoName = if ($RepoNameMapping.ContainsKey($mappingKey)) { 
+                $RepoNameMapping[$mappingKey].OriginalRepository 
+            } else { 
+                $repo 
+            }
+            
             $key = "$projectIndex.$repoIndex"
             $repoIndexMap[$key] = @{
-                Project = $project
-                Repository = $repo
+                Project = $project  # Keep sanitized for blob lookup
+                Repository = $repo   # Keep sanitized for blob lookup
+                DisplayProject = $displayProjectName  # Original name for display
+                DisplayRepository = $displayRepoName  # Original name for display
             }
             
             $tableData += [PSCustomObject]@{
                 Key = $key
-                Project = $project
-                Repository = $repo
+                Project = $displayProjectName
+                Repository = $displayRepoName
                 LatestBackup = $latest
                 Size = if ($latestSize -gt 0) { "$latestSize MB" } else { "N/A" }
                 TotalBackups = $backups.Count
@@ -383,6 +398,63 @@ function Get-BackupBlob {
     } catch {
         Write-Log "Failed to download backup: $($_.Exception.Message)" "ERROR"
         return $false
+    }
+}
+
+function Get-OriginalNamesFromManifest {
+    param(
+        [object]$StorageContext,
+        [string]$ContainerName
+    )
+    
+    Write-Log "Reading manifest to get original repository and project names..." "INFO"
+    
+    try {
+        # Try to get the latest manifest
+        $manifestBlob = Get-AzStorageBlob -Blob "backup-manifest.json" -Container $ContainerName -Context $StorageContext -ErrorAction SilentlyContinue
+        if (-not $manifestBlob) {
+            Write-Log "Manifest not found. Will use names from blob paths." "WARNING"
+            return @{}, @{}
+        }
+        
+        $tempManifestPath = Join-Path $env:TEMP "manifest-$(Get-Date -Format 'yyyyMMddHHmmss').json"
+        Get-AzStorageBlobContent -Blob "backup-manifest.json" -Container $ContainerName -Context $StorageContext -Destination $tempManifestPath -Force -ErrorAction Stop
+        
+        $manifestContent = Get-Content $tempManifestPath -Raw | ConvertFrom-Json
+        Remove-Item $tempManifestPath -Force -ErrorAction SilentlyContinue
+        
+        # Create mapping: sanitized blob path -> original names
+        $repoNameMapping = @{}
+        $projectNameMapping = @{}
+        
+        foreach ($repo in $manifestContent.Repositories) {
+            if ($repo.Status -eq "Success" -and $repo.BlobPath) {
+                # Extract sanitized project/repo from BlobPath (format: ProjectName/RepositoryName/YYYY-MM-DD.zip)
+                $pathParts = $repo.BlobPath.Split('/')
+                if ($pathParts.Count -ge 2) {
+                    $sanitizedProject = $pathParts[0]
+                    $sanitizedRepo = $pathParts[1]
+                    $mappingKey = "$sanitizedProject|$sanitizedRepo"
+                    
+                    # Store repository mapping
+                    $repoNameMapping[$mappingKey] = @{
+                        OriginalProject = $repo.Project
+                        OriginalRepository = $repo.Repository
+                    }
+                    
+                    # Store project mapping (sanitized -> original)
+                    if (-not $projectNameMapping.ContainsKey($sanitizedProject)) {
+                        $projectNameMapping[$sanitizedProject] = $repo.Project
+                    }
+                }
+            }
+        }
+        
+        Write-Log "Found $($repoNameMapping.Count) repository name mappings and $($projectNameMapping.Count) project name mappings in manifest" "SUCCESS"
+        return $repoNameMapping, $projectNameMapping
+    } catch {
+        Write-Log "Could not read manifest for original names: $($_.Exception.Message)" "WARNING"
+        return @{}, @{}
     }
 }
 
@@ -659,8 +731,11 @@ try {
         exit 0
     }
     
+    # Get original names from manifest
+    $repoNameMapping, $projectNameMapping = Get-OriginalNamesFromManifest -StorageContext $storageContext -ContainerName $ContainerName
+    
     # Display available backups
-    $repoIndexMap = Display-AvailableBackups -BackupStructure $backupStructure
+    $repoIndexMap = Display-AvailableBackups -BackupStructure $backupStructure -ProjectNameMapping $projectNameMapping -RepoNameMapping $repoNameMapping
     
     # Select restore scenario
     $scenario = Select-RestoreScenario
@@ -731,6 +806,13 @@ try {
         Write-Log "========================================" "INFO"
         
         foreach ($project in ($backupStructure.Keys | Sort-Object)) {
+            # Get original project name
+            $originalProject = if ($projectNameMapping.ContainsKey($project)) { 
+                $projectNameMapping[$project] 
+            } else { 
+                $project 
+            }
+            
             foreach ($repo in ($backupStructure[$project].Keys | Sort-Object)) {
                 $backups = @($backupStructure[$project][$repo])
                 $latestDate = Get-LatestBackupDate -Backups $backups
@@ -741,11 +823,19 @@ try {
                     continue
                 }
                 
+                # Get original repository name from mapping
+                $mappingKey = "$project|$repo"
+                $originalRepo = $repo
+                
+                if ($repoNameMapping.ContainsKey($mappingKey)) {
+                    $originalRepo = $repoNameMapping[$mappingKey].OriginalRepository
+                }
+                
                 $restoreList += @{
-                    SourceProject = $project
-                    SourceRepo = $repo
-                    TargetProject = $project
-                    TargetRepo = $repo
+                    SourceProject = $originalProject
+                    SourceRepo = $originalRepo
+                    TargetProject = $originalProject
+                    TargetRepo = $originalRepo
                     BackupDate = $latestDate
                     BlobName = $backupBlob.BlobName
                 }
@@ -765,11 +855,17 @@ try {
         Write-Log "Project Restore" "INFO"
         Write-Log "========================================" "INFO"
         
-        # List projects
+        # List projects with original names
         $projects = $backupStructure.Keys | Sort-Object
         Write-Log "Available projects:" "INFO"
         for ($i = 0; $i -lt $projects.Count; $i++) {
-            Write-Log "  [$($i + 1)] $($projects[$i])" "INFO"
+            $sanitizedProject = $projects[$i]
+            $displayProjectName = if ($projectNameMapping.ContainsKey($sanitizedProject)) { 
+                $projectNameMapping[$sanitizedProject] 
+            } else { 
+                $sanitizedProject 
+            }
+            Write-Log "  [$($i + 1)] $displayProjectName" "INFO"
         }
         
         $projectChoice = ""
@@ -782,12 +878,19 @@ try {
         }
         
         $sourceProject = $projects[[int]$projectChoice - 1]
-        Write-Log "Selected source project: $sourceProject" "INFO"
+        $originalSourceProject = if ($projectNameMapping.ContainsKey($sourceProject)) { 
+            $projectNameMapping[$sourceProject] 
+        } else { 
+            $sourceProject 
+        }
         
-        # Get target project name
-        $targetProject = Read-Host "Enter target project name (can be new/different, default: $sourceProject)"
+        Write-Log "Selected source project: $originalSourceProject" "INFO"
+        
+        # Get target project name with default "<ProjectName> Restored"
+        $defaultTargetProject = "$originalSourceProject Restored"
+        $targetProject = Read-Host "Enter target project name (can be new/different, default: $defaultTargetProject)"
         if ($targetProject -eq "") {
-            $targetProject = $sourceProject
+            $targetProject = $defaultTargetProject
         }
         
         # Build restore list for all repos in the project
@@ -801,11 +904,20 @@ try {
                 continue
             }
             
+            # Get original repository name from mapping
+            $mappingKey = "$sourceProject|$repo"
+            $originalRepo = $repo
+            
+            if ($repoNameMapping.ContainsKey($mappingKey)) {
+                $originalRepo = $repoNameMapping[$mappingKey].OriginalRepository
+                Write-Log "Using original repository name: $originalRepo (from blob: $repo)" "INFO"
+            }
+            
             $restoreList += @{
-                SourceProject = $sourceProject
-                SourceRepo = $repo
+                SourceProject = $originalSourceProject
+                SourceRepo = $originalRepo
                 TargetProject = $targetProject
-                TargetRepo = $repo
+                TargetRepo = $originalRepo
                 BackupDate = $latestDate
                 BlobName = $backupBlob.BlobName
             }
@@ -833,35 +945,48 @@ try {
         }
         
         $selectedRepo = $repoIndexMap[$repoKey]
-        $sourceProject = $selectedRepo.Project
-        $sourceRepo = $selectedRepo.Repository
+        $sourceProject = $selectedRepo.Project  # Sanitized for blob lookup
+        $sourceRepo = $selectedRepo.Repository   # Sanitized for blob lookup
         
-        Write-Log "Selected repository: $($sourceProject)/$($sourceRepo)" "INFO"
+        # Get original names
+        $originalSourceProject = if ($projectNameMapping.ContainsKey($sourceProject)) { 
+            $projectNameMapping[$sourceProject] 
+        } else { 
+            $sourceProject 
+        }
+        
+        $mappingKey = "$sourceProject|$sourceRepo"
+        $originalSourceRepo = $sourceRepo
+        if ($repoNameMapping.ContainsKey($mappingKey)) {
+            $originalSourceRepo = $repoNameMapping[$mappingKey].OriginalRepository
+        }
+        
+        Write-Log "Selected repository: $($originalSourceProject)/$($originalSourceRepo)" "INFO"
         
         # Select backup date
         $backups = @($backupStructure[$sourceProject][$sourceRepo])
-        $backupDate = Select-BackupDate -Backups $backups -ProjectName $sourceProject -RepoName $sourceRepo
+        $backupDate = Select-BackupDate -Backups $backups -ProjectName $originalSourceProject -RepoName $originalSourceRepo
         $backupBlob = ($backups | Where-Object { $_.Date -eq $backupDate } | Select-Object -First 1)
         
         if (-not $backupBlob -or -not $backupBlob.BlobName) {
-            throw "No backup found for $sourceProject/$sourceRepo with date $backupDate"
+            throw "No backup found for $originalSourceProject/$originalSourceRepo with date $backupDate"
         }
         
         # Get target project
-        $targetProject = Read-Host "Enter target project name (can be different, default: $sourceProject)"
+        $targetProject = Read-Host "Enter target project name (can be different, default: $originalSourceProject)"
         if ($targetProject -eq "") {
-            $targetProject = $sourceProject
+            $targetProject = $originalSourceProject
         }
         
         # Get target repo name
-        $targetRepo = Read-Host "Enter target repository name (can be different, default: $sourceRepo)"
+        $targetRepo = Read-Host "Enter target repository name (can be different, default: $originalSourceRepo)"
         if ($targetRepo -eq "") {
-            $targetRepo = $sourceRepo
+            $targetRepo = $originalSourceRepo
         }
         
         $restoreList += @{
-            SourceProject = $sourceProject
-            SourceRepo = $sourceRepo
+            SourceProject = $originalSourceProject
+            SourceRepo = $originalSourceRepo
             TargetProject = $targetProject
             TargetRepo = $targetRepo
             BackupDate = $backupDate
