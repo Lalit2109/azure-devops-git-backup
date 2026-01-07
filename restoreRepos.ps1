@@ -451,10 +451,16 @@ function Get-OriginalNamesFromManifest {
         }
         
         Write-Log "Found $($repoNameMapping.Count) repository name mappings and $($projectNameMapping.Count) project name mappings in manifest" "SUCCESS"
-        return $repoNameMapping, $projectNameMapping
+        return @{
+            RepoMapping = $repoNameMapping
+            ProjectMapping = $projectNameMapping
+        }
     } catch {
         Write-Log "Could not read manifest for original names: $($_.Exception.Message)" "WARNING"
-        return @{}, @{}
+        return @{
+            RepoMapping = @{}
+            ProjectMapping = @{}
+        }
     }
 }
 
@@ -732,7 +738,9 @@ try {
     }
     
     # Get original names from manifest
-    $repoNameMapping, $projectNameMapping = Get-OriginalNamesFromManifest -StorageContext $storageContext -ContainerName $ContainerName
+    $nameMappings = Get-OriginalNamesFromManifest -StorageContext $storageContext -ContainerName $ContainerName
+    $repoNameMapping = $nameMappings.RepoMapping
+    $projectNameMapping = $nameMappings.ProjectMapping
     
     # Display available backups
     $repoIndexMap = Display-AvailableBackups -BackupStructure $backupStructure -ProjectNameMapping $projectNameMapping -RepoNameMapping $repoNameMapping
