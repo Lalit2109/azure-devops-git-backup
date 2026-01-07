@@ -25,7 +25,7 @@
     Target Azure DevOps organization URL.
 
 .PARAMETER AccessToken
-    Azure DevOps Personal Access Token. If not provided, uses $env:SYSTEM_ACCESSTOKEN
+    Azure DevOps Personal Access Token. If not provided, will prompt for input.
 
 .EXAMPLE
     .\restoreRepos.ps1
@@ -55,7 +55,7 @@ param(
     [string]$AzureDevOpsAccount,
     
     [Parameter(Mandatory = $false)]
-    [string]$AccessToken = $env:SYSTEM_ACCESSTOKEN
+    [string]$AccessToken
 )
 
 #region Helper Functions
@@ -69,7 +69,7 @@ function Write-Log {
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     
     # Use string formatting to avoid quote issues - PowerShell best practice
-    $logMessage = "{0} [{1}] {2}" -f $timestamp, $Level, $Message
+    $logMessage = "{0} [LOG] [{1}] {2}" -f $timestamp, $Level, $Message
     
     # Write to console with colors - standard PowerShell Write-Host
     switch ($Level) {
@@ -86,6 +86,21 @@ function Write-Log {
         } catch {
             # If log file write fails, continue without logging
         }
+    }
+}
+
+function Read-UserInput {
+    param(
+        [string]$Prompt,
+        [switch]$AsSecureString
+    )
+    
+    Write-Host ""
+    Write-Host ">>> [INPUT] $Prompt" -ForegroundColor Cyan
+    if ($AsSecureString) {
+        return Read-Host -AsSecureString
+    } else {
+        return Read-Host
     }
 }
 
@@ -234,7 +249,7 @@ function Select-RestoreScenario {
     
     $choice = ""
     while ($choice -notin @("1", "2", "3")) {
-        $choice = Read-Host "Select restore scenario (1, 2, or 3)"
+        $choice = Read-UserInput -Prompt "Select restore scenario (1, 2, or 3)"
         if ($choice -notin @("1", "2", "3")) {
             Write-Log "Invalid choice. Please enter 1, 2, or 3." "WARNING"
         }
@@ -363,7 +378,7 @@ function Select-BackupDate {
     
     $choice = ""
     while ($choice -eq "" -or ([int]$choice -lt 1 -or [int]$choice -gt $Backups.Count)) {
-        $choice = Read-Host "Select backup date (1-$($Backups.Count), default: 1 for latest)"
+        $choice = Read-UserInput -Prompt "Select backup date (1-$($Backups.Count), default: 1 for latest)"
         if ($choice -eq "") {
             $choice = "1"
         }
@@ -547,7 +562,7 @@ function Create-ProjectIfNeeded {
         
         # Ask for confirmation
         Write-Log "Project '$ProjectName' does not exist" "WARNING"
-        $confirm = Read-Host "Create new project '$ProjectName'? (Y/N)"
+        $confirm = Read-UserInput -Prompt "Create new project '$ProjectName'? (Y/N)"
         if ($confirm -ne "Y" -and $confirm -ne "y") {
             Write-Log "Project creation cancelled by user" "WARNING"
             return $false
@@ -584,7 +599,7 @@ function Create-RepositoryIfNeeded {
         
         if ($existingRepo) {
             Write-Log "Repository '$RepositoryName' already exists in project '$ProjectName'" "WARNING"
-            $action = Read-Host "Repository exists. Options: (S)kip, (O)verwrite, (A)bort [Default: Skip]"
+            $action = Read-UserInput -Prompt "Repository exists. Options: (S)kip, (O)verwrite, (A)bort [Default: Skip]"
             if ($action -eq "" -or $action -eq "S" -or $action -eq "s") {
                 Write-Log "Skipping repository restore" "INFO"
                 return $null
@@ -719,16 +734,24 @@ try {
     Import-Module Az.Storage -ErrorAction Stop
     
     # Get storage account details
+    if (-not $ResourceGroupName -or -not $StorageAccountName -or -not $ContainerName) {
+        Write-Host ""
+        Write-Host "========================================" -ForegroundColor DarkGray
+        Write-Host "Azure Storage Configuration" -ForegroundColor White
+        Write-Host "========================================" -ForegroundColor DarkGray
+        Write-Host ""
+    }
+    
     if (-not $ResourceGroupName) {
-        $ResourceGroupName = Read-Host "Enter Azure Resource Group name"
+        $ResourceGroupName = Read-UserInput -Prompt "Enter Azure Resource Group name"
     }
     
     if (-not $StorageAccountName) {
-        $StorageAccountName = Read-Host "Enter Azure Storage Account name"
+        $StorageAccountName = Read-UserInput -Prompt "Enter Azure Storage Account name"
     }
     
     if (-not $ContainerName) {
-        $ContainerName = Read-Host "Enter Container name (default: repobackups)"
+        $ContainerName = Read-UserInput -Prompt "Enter Container name (default: repobackups)"
         if ($ContainerName -eq "") {
             $ContainerName = "repobackups"
         }
@@ -772,41 +795,40 @@ try {
     
     # Get target Azure DevOps details
     if (-not $AzureDevOpsAccount) {
-        $AzureDevOpsAccount = Read-Host "Enter target Azure DevOps organization URL (e.g., https://dev.azure.com/YourOrganization)"
+        Write-Host ""
+        Write-Host "========================================" -ForegroundColor DarkGray
+        Write-Host "Azure DevOps Configuration" -ForegroundColor White
+        Write-Host "========================================" -ForegroundColor DarkGray
+        Write-Host ""
+        $AzureDevOpsAccount = Read-UserInput -Prompt "Enter target Azure DevOps organization URL (e.g., https://dev.azure.com/YourOrganization)"
     }
     
-    # Check if AccessToken is provided and valid
-    $tokenProvided = $false
-    if ($AccessToken) {
-        if ($AccessToken -is [SecureString]) {
-            # Convert SecureString to plain string
-            $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($AccessToken)
+    # Get Personal Access Token
+    if (-not $AccessToken) {
+        Write-Host ""
+        Write-Host "========================================" -ForegroundColor DarkGray
+        Write-Host "Authentication" -ForegroundColor White
+        Write-Host "========================================" -ForegroundColor DarkGray
+        Write-Host ""
+        $secureToken = Read-UserInput -Prompt "Enter Azure DevOps Personal Access Token" -AsSecureString
+        if ($secureToken -and $secureToken -is [SecureString]) {
+            $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureToken)
             try {
                 $AccessToken = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
-                $tokenProvided = $true
             } finally {
                 [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
             }
-        } elseif ($AccessToken -is [string] -and $AccessToken.Trim() -ne "") {
-            $tokenProvided = $true
-        }
-    }
-    
-    if (-not $tokenProvided) {
-        $useEnv = Read-Host "Use SYSTEM_ACCESSTOKEN environment variable? (Y/N)"
-        if ($useEnv -eq "Y" -or $useEnv -eq "y") {
-            $AccessToken = $env:SYSTEM_ACCESSTOKEN
         } else {
-            $secureToken = Read-Host "Enter Azure DevOps Personal Access Token" -AsSecureString
-            if ($secureToken -and $secureToken -is [SecureString]) {
-                $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureToken)
-                try {
-                    $AccessToken = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
-                } finally {
-                    [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
-                }
-            } else {
-                throw "Failed to read Personal Access Token."
+            throw "Failed to read Personal Access Token."
+        }
+    } else {
+        # AccessToken was provided as parameter, convert if SecureString
+        if ($AccessToken -is [SecureString]) {
+            $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($AccessToken)
+            try {
+                $AccessToken = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
+            } finally {
+                [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
             }
         }
     }
@@ -873,7 +895,7 @@ try {
         }
         
         Write-Log "Will restore $($restoreList.Count) repositories" "INFO"
-        $confirm = Read-Host "Proceed with full restore? (Y/N)"
+        $confirm = Read-UserInput -Prompt "Proceed with full restore? (Y/N)"
         if ($confirm -ne "Y" -and $confirm -ne "y") {
             Write-Log "Restore cancelled by user" "INFO"
             exit 0
@@ -900,7 +922,7 @@ try {
         
         $projectChoice = ""
         while ($projectChoice -eq "" -or ([int]$projectChoice -lt 1 -or [int]$projectChoice -gt $projects.Count)) {
-            $projectChoice = Read-Host "Select source project (1-$($projects.Count))"
+            $projectChoice = Read-UserInput -Prompt "Select source project (1-$($projects.Count))"
             if ([int]$projectChoice -lt 1 -or [int]$projectChoice -gt $projects.Count) {
                 Write-Log "Invalid choice. Please enter a number between 1 and $($projects.Count)." "WARNING"
                 $projectChoice = ""
@@ -918,7 +940,7 @@ try {
         
         # Get target project name with default "<ProjectName> Restored"
         $defaultTargetProject = "$originalSourceProject Restored"
-        $targetProject = Read-Host "Enter target project name (can be new/different, default: $defaultTargetProject)"
+        $targetProject = Read-UserInput -Prompt "Enter target project name (can be new/different, default: $defaultTargetProject)"
         if ($targetProject -eq "") {
             $targetProject = $defaultTargetProject
         }
@@ -954,7 +976,7 @@ try {
         }
         
         Write-Log "Will restore $($restoreList.Count) repositories to project '$targetProject'" "INFO"
-        $confirm = Read-Host "Proceed with project restore? (Y/N)"
+        $confirm = Read-UserInput -Prompt "Proceed with project restore? (Y/N)"
         if ($confirm -ne "Y" -and $confirm -ne "y") {
             Write-Log "Restore cancelled by user" "INFO"
             exit 0
@@ -968,7 +990,7 @@ try {
         
         # Select repository
         Write-Log "Enter repository key (e.g., 1.1, 2.3):" "INFO"
-        $repoKey = Read-Host "Repository key"
+        $repoKey = Read-UserInput -Prompt "Repository key"
         
         if (-not $repoIndexMap.ContainsKey($repoKey)) {
             throw "Invalid repository key: $repoKey"
@@ -1003,13 +1025,13 @@ try {
         }
         
         # Get target project
-        $targetProject = Read-Host "Enter target project name (can be different, default: $originalSourceProject)"
+        $targetProject = Read-UserInput -Prompt "Enter target project name (can be different, default: $originalSourceProject)"
         if ($targetProject -eq "") {
             $targetProject = $originalSourceProject
         }
         
         # Get target repo name
-        $targetRepo = Read-Host "Enter target repository name (can be different, default: $originalSourceRepo)"
+        $targetRepo = Read-UserInput -Prompt "Enter target repository name (can be different, default: $originalSourceRepo)"
         if ($targetRepo -eq "") {
             $targetRepo = $originalSourceRepo
         }
